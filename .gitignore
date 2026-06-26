@@ -1,0 +1,21 @@
+# env
+.env
+.env.*
+!.env.example
+
+# go
+bin/
+*.exe
+*.test
+*.out
+coverage/
+coverage.out
+
+# logs
+*.log
+
+# tooling
+.DS_Store
+.idea/
+.vscode/
+tmp/
