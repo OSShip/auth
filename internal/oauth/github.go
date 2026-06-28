@@ -3,6 +3,7 @@ package oauth
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,6 +26,7 @@ type GitHub struct {
 
 func (g *GitHub) Start(w http.ResponseWriter, r *http.Request) {
 	if g.GitHubClientID == "" {
+		slog.InfoContext(r.Context(), "GitHub OAuth stub response")
 		handler.WriteJSON(w, http.StatusOK, map[string]interface{}{
 			"stub":     true,
 			"message":  "GitHub OAuth is not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET, or register with github_username.",
@@ -33,6 +35,7 @@ func (g *GitHub) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := uuid.New().String()
+	slog.InfoContext(r.Context(), "GitHub OAuth redirect", "state", state)
 	params := url.Values{
 		"client_id":    {g.GitHubClientID},
 		"redirect_uri": {g.GitHubRedirectURI},
@@ -47,19 +50,23 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 		githubUsername := r.URL.Query().Get("github_username")
 		email := r.URL.Query().Get("email")
 		if githubUsername == "" || email == "" {
+			slog.WarnContext(r.Context(), "OAuth stub missing params")
 			http.Error(w, `{"error":"stub mode requires github_username and email query params"}`, http.StatusBadRequest)
 			return
 		}
 		user, err := g.Users.FindOrCreateOAuthUser(r.Context(), email, githubUsername, "student")
 		if err != nil {
+			slog.ErrorContext(r.Context(), "OAuth stub user create failed", "err", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
 		token, err := jwtutil.GenerateToken(g.JWTSecret, user.ID, user.Role, user.GithubUsername, g.ExpiryHours)
 		if err != nil {
+			slog.ErrorContext(r.Context(), "OAuth stub token failed", "err", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
+		slog.InfoContext(r.Context(), "OAuth stub login", "user_id", user.ID, "github", githubUsername)
 		handler.WriteJSON(w, http.StatusOK, model.TokenResp{Token: token, User: user})
 		return
 	}
@@ -80,7 +87,13 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	oauthHTTPResp, err := http.DefaultClient.Do(tokenReq)
-	if err != nil || oauthHTTPResp.StatusCode != http.StatusOK {
+	if err != nil {
+		slog.ErrorContext(r.Context(), "GitHub token exchange failed", "err", err)
+		http.Error(w, `{"error":"oauth token exchange failed"}`, http.StatusBadGateway)
+		return
+	}
+	if oauthHTTPResp.StatusCode != http.StatusOK {
+		slog.ErrorContext(r.Context(), "GitHub token exchange bad status", "status", oauthHTTPResp.StatusCode)
 		http.Error(w, `{"error":"oauth token exchange failed"}`, http.StatusBadGateway)
 		return
 	}
@@ -126,5 +139,6 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
+	slog.InfoContext(r.Context(), "GitHub OAuth login", "user_id", user.ID, "github", ghUser.Login)
 	handler.WriteJSON(w, http.StatusOK, model.TokenResp{Token: token, User: user})
 }
