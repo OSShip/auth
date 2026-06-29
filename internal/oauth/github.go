@@ -13,6 +13,7 @@ import (
 	"github.com/OSShip/auth/internal/store"
 	"github.com/google/uuid"
 	"github.com/OSShip/utils/jwtutil"
+	"github.com/OSShip/utils/observability"
 )
 
 type GitHub struct {
@@ -56,14 +57,12 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 		user, err := g.Users.FindOrCreateOAuthUser(r.Context(), email, githubUsername, "student")
 		if err != nil {
-			slog.ErrorContext(r.Context(), "OAuth stub user create failed", "err", err)
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			observability.RespondError(w, r, http.StatusInternalServerError, "internal", "oauth stub find or create user", err, "github", githubUsername)
 			return
 		}
 		token, err := jwtutil.GenerateToken(g.JWTSecret, user.ID, user.Role, user.GithubUsername, g.ExpiryHours)
 		if err != nil {
-			slog.ErrorContext(r.Context(), "OAuth stub token failed", "err", err)
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			observability.RespondError(w, r, http.StatusInternalServerError, "internal", "oauth stub generate token", err, "user_id", user.ID)
 			return
 		}
 		slog.InfoContext(r.Context(), "OAuth stub login", "user_id", user.ID, "github", githubUsername)
@@ -131,12 +130,12 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 
 	user, err := g.Users.FindOrCreateOAuthUser(r.Context(), ghUser.Email, ghUser.Login, "student")
 	if err != nil {
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		observability.RespondError(w, r, http.StatusInternalServerError, "internal", "oauth find or create user", err, "github", ghUser.Login)
 		return
 	}
 	token, err := jwtutil.GenerateToken(g.JWTSecret, user.ID, user.Role, user.GithubUsername, g.ExpiryHours)
 	if err != nil {
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		observability.RespondError(w, r, http.StatusInternalServerError, "internal", "oauth generate token", err, "user_id", user.ID)
 		return
 	}
 	slog.InfoContext(r.Context(), "GitHub OAuth login", "user_id", user.ID, "github", ghUser.Login)

@@ -15,7 +15,8 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/getsentry/sentry-go v0.31.1 // indirect
+	github.com/getsentry/sentry-go v0.34.0 // indirect
+	github.com/getsentry/sentry-go/slog v0.34.0 // indirect
 	github.com/go-redis/redis_rate/v10 v10.0.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

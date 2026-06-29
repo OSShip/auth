@@ -43,9 +43,7 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) {
 
 	salt, hash, err := passhash.HashPasswordPair(req.Password)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "register hash failed", "err", err)
-		observability.CaptureError(err, map[string]string{"handler": "register"})
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		observability.RespondError(w, r, http.StatusInternalServerError, "internal", "hash password", err)
 		return
 	}
 
@@ -59,8 +57,7 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) {
 
 	token, err := jwtutil.GenerateToken(s.JWTSecret, id, role, req.GithubUsername, s.ExpiryHours)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "register token failed", "user_id", id, "err", err)
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		observability.RespondError(w, r, http.StatusInternalServerError, "internal", "generate register token", err, "user_id", id)
 		return
 	}
 
@@ -93,8 +90,7 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, err := jwtutil.GenerateToken(s.JWTSecret, id, role, github, s.ExpiryHours)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "login token failed", "user_id", id, "err", err)
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		observability.RespondError(w, r, http.StatusInternalServerError, "internal", "generate login token", err, "user_id", id)
 		return
 	}
 
@@ -123,8 +119,7 @@ func (s *Server) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := jwtutil.GenerateToken(s.JWTSecret, claims.UserID, claims.Role, claims.GithubUsername, s.ExpiryHours)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "refresh token failed", "user_id", claims.UserID, "err", err)
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		observability.RespondError(w, r, http.StatusInternalServerError, "internal", "generate refresh token", err, "user_id", claims.UserID)
 		return
 	}
 	slog.DebugContext(r.Context(), "token refreshed", "user_id", claims.UserID)
