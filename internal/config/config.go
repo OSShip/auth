@@ -6,13 +6,14 @@ import (
 )
 
 type Config struct {
-	DatabaseURL        string
-	JWTSecret          string
-	JWTExpiryHours     int
-	Port               string
-	GitHubClientID     string
-	GitHubClientSecret string
-	GitHubRedirectURI  string
+	DatabaseURL          string
+	JWTSecret            string
+	JWTExpiryHours       int
+	Port                 string
+	GitHubClientID       string
+	GitHubClientSecret   string
+	GitHubRedirectURI    string
+	OAuthSuccessRedirect string
 }
 
 func Load() Config {
@@ -23,7 +24,8 @@ func Load() Config {
 		Port:               env("PORT", "8081"),
 		GitHubClientID:     env("GITHUB_CLIENT_ID", ""),
 		GitHubClientSecret: env("GITHUB_CLIENT_SECRET", ""),
-		GitHubRedirectURI:  env("GITHUB_OAUTH_REDIRECT_URI", "http://localhost/api/v1/auth/oauth/github/callback"),
+		GitHubRedirectURI:    env("GITHUB_OAUTH_REDIRECT_URI", "http://localhost/api/v1/auth/oauth/github/callback"),
+		OAuthSuccessRedirect: env("OAUTH_SUCCESS_REDIRECT", env("APP_BASE_URL", "http://localhost")+"/auth/github/callback"),
 	}
 }
 

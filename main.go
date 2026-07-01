@@ -34,12 +34,13 @@ func main() {
 	users := &store.Users{Pool: pool}
 	srv := &handler.Server{Users: users, JWTSecret: cfg.JWTSecret, ExpiryHours: cfg.JWTExpiryHours}
 	gh := &oauth.GitHub{
-		Users:              users,
-		JWTSecret:          cfg.JWTSecret,
-		ExpiryHours:        cfg.JWTExpiryHours,
-		GitHubClientID:     cfg.GitHubClientID,
-		GitHubClientSecret: cfg.GitHubClientSecret,
-		GitHubRedirectURI:  cfg.GitHubRedirectURI,
+		Users:                users,
+		JWTSecret:            cfg.JWTSecret,
+		ExpiryHours:          cfg.JWTExpiryHours,
+		GitHubClientID:       cfg.GitHubClientID,
+		GitHubClientSecret:   cfg.GitHubClientSecret,
+		GitHubRedirectURI:    cfg.GitHubRedirectURI,
+		OAuthSuccessRedirect: cfg.OAuthSuccessRedirect,
 	}
 	if cfg.GitHubClientID == "" {
 		logger.Warn("GitHub OAuth not configured, stub mode enabled")

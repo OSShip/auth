@@ -17,16 +17,61 @@ import (
 )
 
 type GitHub struct {
-	Users              *store.Users
-	JWTSecret          string
-	ExpiryHours        int
-	GitHubClientID     string
-	GitHubClientSecret string
-	GitHubRedirectURI  string
+	Users                *store.Users
+	JWTSecret            string
+	ExpiryHours          int
+	GitHubClientID       string
+	GitHubClientSecret   string
+	GitHubRedirectURI    string
+	OAuthSuccessRedirect string
+}
+
+func wantsBrowserRedirect(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "text/html")
+}
+
+func (g *GitHub) respondToken(w http.ResponseWriter, r *http.Request, token string, user model.User) {
+	if wantsBrowserRedirect(r) && g.OAuthSuccessRedirect != "" {
+		u, err := url.Parse(g.OAuthSuccessRedirect)
+		if err == nil {
+			q := u.Query()
+			q.Set("token", token)
+			u.RawQuery = q.Encode()
+			http.Redirect(w, r, u.String(), http.StatusFound)
+			return
+		}
+	}
+	handler.WriteJSON(w, http.StatusOK, model.TokenResp{Token: token, User: user})
+}
+
+func (g *GitHub) respondOAuthError(w http.ResponseWriter, r *http.Request, status int, code string) {
+	if wantsBrowserRedirect(r) && g.OAuthSuccessRedirect != "" {
+		u, err := url.Parse(g.OAuthSuccessRedirect)
+		if err == nil {
+			q := u.Query()
+			q.Set("error", code)
+			u.RawQuery = q.Encode()
+			http.Redirect(w, r, u.String(), http.StatusFound)
+			return
+		}
+	}
+	http.Error(w, fmt.Sprintf(`{"error":"%s"}`, code), status)
 }
 
 func (g *GitHub) Start(w http.ResponseWriter, r *http.Request) {
 	if g.GitHubClientID == "" {
+		if wantsBrowserRedirect(r) {
+			cb, err := url.Parse(g.GitHubRedirectURI)
+			if err == nil {
+				q := cb.Query()
+				q.Set("github_username", "demo")
+				q.Set("email", "demo@osship.local")
+				cb.RawQuery = q.Encode()
+				http.Redirect(w, r, cb.String(), http.StatusFound)
+				return
+			}
+		}
 		slog.InfoContext(r.Context(), "GitHub OAuth stub response")
 		handler.WriteJSON(w, http.StatusOK, map[string]interface{}{
 			"stub":     true,
@@ -52,7 +97,7 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 		email := r.URL.Query().Get("email")
 		if githubUsername == "" || email == "" {
 			slog.WarnContext(r.Context(), "OAuth stub missing params")
-			http.Error(w, `{"error":"stub mode requires github_username and email query params"}`, http.StatusBadRequest)
+			g.respondOAuthError(w, r, http.StatusBadRequest, "stub_missing_params")
 			return
 		}
 		user, err := g.Users.FindOrCreateOAuthUser(r.Context(), email, githubUsername, "student")
@@ -66,13 +111,13 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.InfoContext(r.Context(), "OAuth stub login", "user_id", user.ID, "github", githubUsername)
-		handler.WriteJSON(w, http.StatusOK, model.TokenResp{Token: token, User: user})
+		g.respondToken(w, r, token, user)
 		return
 	}
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		http.Error(w, `{"error":"missing code"}`, http.StatusBadRequest)
+		g.respondOAuthError(w, r, http.StatusBadRequest, "missing_code")
 		return
 	}
 
@@ -88,12 +133,12 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 	oauthHTTPResp, err := http.DefaultClient.Do(tokenReq)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "GitHub token exchange failed", "err", err)
-		http.Error(w, `{"error":"oauth token exchange failed"}`, http.StatusBadGateway)
+		g.respondOAuthError(w, r, http.StatusBadGateway, "token_exchange_failed")
 		return
 	}
 	if oauthHTTPResp.StatusCode != http.StatusOK {
 		slog.ErrorContext(r.Context(), "GitHub token exchange bad status", "status", oauthHTTPResp.StatusCode)
-		http.Error(w, `{"error":"oauth token exchange failed"}`, http.StatusBadGateway)
+		g.respondOAuthError(w, r, http.StatusBadGateway, "token_exchange_failed")
 		return
 	}
 	defer oauthHTTPResp.Body.Close()
@@ -102,7 +147,7 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 		AccessToken string `json:"access_token"`
 	}
 	if err := json.NewDecoder(oauthHTTPResp.Body).Decode(&oauthToken); err != nil || oauthToken.AccessToken == "" {
-		http.Error(w, `{"error":"invalid oauth response"}`, http.StatusBadGateway)
+		g.respondOAuthError(w, r, http.StatusBadGateway, "invalid_oauth_response")
 		return
 	}
 
@@ -111,7 +156,7 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 	ghReq.Header.Set("Accept", "application/vnd.github+json")
 	ghResp, err := http.DefaultClient.Do(ghReq)
 	if err != nil || ghResp.StatusCode != http.StatusOK {
-		http.Error(w, `{"error":"github user fetch failed"}`, http.StatusBadGateway)
+		g.respondOAuthError(w, r, http.StatusBadGateway, "github_user_fetch_failed")
 		return
 	}
 	defer ghResp.Body.Close()
@@ -121,7 +166,7 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 	}
 	if err := json.NewDecoder(ghResp.Body).Decode(&ghUser); err != nil || ghUser.Login == "" {
-		http.Error(w, `{"error":"invalid github user"}`, http.StatusBadGateway)
+		g.respondOAuthError(w, r, http.StatusBadGateway, "invalid_github_user")
 		return
 	}
 	if ghUser.Email == "" {
@@ -139,5 +184,5 @@ func (g *GitHub) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "GitHub OAuth login", "user_id", user.ID, "github", ghUser.Login)
-	handler.WriteJSON(w, http.StatusOK, model.TokenResp{Token: token, User: user})
+	g.respondToken(w, r, token, user)
 }
